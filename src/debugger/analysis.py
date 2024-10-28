@@ -47,7 +47,7 @@ def get_completion(prompt: str) -> list[str]:
     # assume only a single completion choice
     texts = [c.message.content for c in response.choices]
     #print(texts[0])
-    return texts[0], response.usage
+    return texts[0]
 
 
 def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
@@ -107,14 +107,29 @@ def candidate():
 if __name__ == "__main__":
     import datasets
     import requests
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 
     data = datasets.load_dataset("evalplus/humanevalplus", split="test")
     url = "https://justinchiu--runtest-dev.modal.run"
 
     for x in data:
         prompt = CODEGEN_PROMPT.format(problem = x["prompt"])
-        output, usage = get_completion(prompt)
-        tokens, logprobs = get_logprobs(prompt, output)
+        output = get_completion(prompt)
+
+        x_prompt = x["prompt"].strip()
+        x_solution = x["canonical_solution"].strip()
+        full_solution = f"""```python
+{x_prompt}
+
+{x_solution}
+```"""
+        tokens, logprobs = get_logprobs(prompt, full_solution)
+        solution_len = len(tokenizer.tokenize(full_solution))
+        # for debugging
+        #completion_tokens = tokens[-solution_len:]
+        logprob1 = sum(logprobs[-solution_len:])
 
         code = re.findall(r"```python\n(.*?)\n```", output, flags=re.MULTILINE|re.DOTALL)[0]
 
@@ -124,7 +139,7 @@ if __name__ == "__main__":
 
         for report in reports:
             if "failed" in report["summary"]:
-                output = report["tests"][0]["call"]["longrepr"]
-                out = re.findall(r"out = .*", output)[0]
-                exp = re.findall(r"exp = .*", output)[0]
+                report_output = report["tests"][0]["call"]["longrepr"]
+                out = re.findall(r"out = .*", report_output)[0]
+                exp = re.findall(r"exp = .*", report_output)[0]
                 import pdb; pdb.set_trace()
