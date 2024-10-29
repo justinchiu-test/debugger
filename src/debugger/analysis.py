@@ -193,7 +193,9 @@ if __name__ == "__main__":
                         exec(code + f"\nprint({x['entry_point']}(*{input}))")
                         output = eval(x["entry_point"] + f"(*{input})")
 
-                        tokens, logprobs = get_logprobs(REPAIR_PROMPT.format(code=code, input=input, output=output, expected_output=result))
-                        logprob2 = sum(logprobs[-solution_len:], full_solution)
+                        repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=output, expected_output=result)
+
+                        tokens, logprobs = get_logprobs(repair_prompt, full_solution)
+                        logprob2 = sum(logprobs[-solution_len:])
                         import pdb; pdb.set_trace()
 
