@@ -1,5 +1,4 @@
 import together
-import tenacity
 import time
 import re
 
@@ -19,14 +18,6 @@ Your code should be enclosed in triple backticks like so: ```python YOUR CODE HE
 ```"""
 
 
-"""
-@tenacity.retry(
-    stop=tenacity.stop_after_attempt(3),
-    wait=tenacity.wait_exponential(multiplier=1, min=4, max=10),
-    retry=tenacity.retry_if_exception_type(Exception),
-    before_sleep=lambda retry_state: print(f"Retrying after error: {retry_state.outcome.exception()}")
-)
-"""
 def get_completion(prompt: str) -> list[str]:
     """Get completion from Llama with retry logic"""
     response = client.chat.completions.create(
