@@ -1,6 +1,8 @@
 import together
 import time
 import re
+import json
+import ast
 
 
 client = together.Together()
@@ -17,6 +19,36 @@ Your code should be enclosed in triple backticks like so: ```python YOUR CODE HE
 {problem}
 ```"""
 
+TEST_PREFIX = """
+import numpy as np
+
+
+def is_floats(x) -> bool:
+    # check if it is float; List[float]; Tuple[float]
+    if isinstance(x, float):
+        return True
+    if isinstance(x, (list, tuple)):
+        return all(isinstance(i, float) for i in x)
+    if isinstance(x, np.ndarray):
+        return x.dtype == np.float64 or x.dtype == np.float32
+    return False
+
+
+def assertion(out, exp, atol):
+    exact_match = out == exp
+
+    if atol == 0 and is_floats(exp):
+        atol = 1e-6
+    if not exact_match and atol != 0:
+        assert np.allclose(out, exp, rtol=1e-07, atol=atol)
+    else:
+        assert exact_match
+"""
+
+TEST_SINGLE = """
+def test{i}(candidate):
+    assertion(candidate(*{input}), {result}, 0)
+"""
 
 def get_completion(prompt: str) -> list[str]:
     """Get completion from Llama with retry logic"""
@@ -86,13 +118,21 @@ def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
 
 
 def convert_example(output, entry_point, test):
-    test = test.replace("def check", "def test")
+    inputs = ast.literal_eval(re.findall(r"inputs = (.*)", test)[0])
+    results = ast.literal_eval(re.findall(r"results = (.*)", test)[0])
+    test_text = "\n".join([
+        TEST_SINGLE.format(i=i, input=str(input), result=str(result))
+        for i, (input, result) in enumerate(zip(inputs, results))
+    ])
     return f"""{output}
 import pytest
 @pytest.fixture
 def candidate():
     return {entry_point}
-{test}
+
+{TEST_PREFIX}
+
+{test_text}
 """
 
 if __name__ == "__main__":
@@ -131,6 +171,6 @@ if __name__ == "__main__":
         for report in reports:
             if "failed" in report["summary"]:
                 report_output = report["tests"][0]["call"]["longrepr"]
+                import pdb; pdb.set_trace()
                 out = re.findall(r"out = .*", report_output)[0]
                 exp = re.findall(r"exp = .*", report_output)[0]
-                import pdb; pdb.set_trace()
