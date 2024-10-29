@@ -165,8 +165,8 @@ if __name__ == "__main__":
         prompt = CODEGEN_PROMPT.format(problem = x["prompt"])
         output = get_completion(prompt)
 
-        x_prompt = x["prompt"].strip()
-        x_solution = x["canonical_solution"].strip()
+        x_prompt = x["prompt"].strip("\n")
+        x_solution = x["canonical_solution"].strip("\n")
         full_solution = f"""```python
 {x_prompt}
 
@@ -188,14 +188,19 @@ if __name__ == "__main__":
             if "failed" in report["summary"]:
                 for i, test in enumerate(report["tests"]):
                     if test["outcome"] == "failed":
+                        print(test["outcome"])
                         input = inputs[i] # in list form
                         result = results[i] # expected
                         exec(code + f"\nprint({x['entry_point']}(*{input}))")
-                        output = eval(x["entry_point"] + f"(*{input})")
+                        exec_output = eval(x["entry_point"] + f"(*{input})")
 
-                        repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=output, expected_output=result)
+                        repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
 
                         tokens, logprobs = get_logprobs(repair_prompt, full_solution)
                         logprob2 = sum(logprobs[-solution_len:])
+
+                        lines = repair_prompt.splitlines()
+                        ts, ls = get_logprobs("\n".join(lines[:-6] + [lines[-1]]), full_solution)
+                        logprob3 = sum(ls[-solution_len:])
                         import pdb; pdb.set_trace()
 
