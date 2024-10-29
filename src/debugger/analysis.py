@@ -19,6 +19,21 @@ Your code should be enclosed in triple backticks like so: ```python YOUR CODE HE
 {problem}
 ```"""
 
+REPAIR_PROMPT = """Provide a Python solution for the following programming
+question.
+Your code should be enclosed in triple backticks like so: ```python YOUR CODE HERE ```. Use the backticks for your code only.
+
+```python
+{code}
+```
+
+Your solution fails the following example:
+    Input: {input}
+    Output: {output}
+    Expected output: {expected_output}
+
+Please correct the code."""
+
 TEST_PREFIX = """
 import numpy as np
 
@@ -121,10 +136,10 @@ def convert_example(output, entry_point, test):
     inputs = ast.literal_eval(re.findall(r"inputs = (.*)", test)[0])
     results = ast.literal_eval(re.findall(r"results = (.*)", test)[0])
     test_text = "\n".join([
-        TEST_SINGLE.format(i=i, input=str(input), result=str(result))
+        TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
         for i, (input, result) in enumerate(zip(inputs, results))
     ])
-    return f"""{output}
+    test_string = f"""{output}
 import pytest
 @pytest.fixture
 def candidate():
@@ -134,6 +149,7 @@ def candidate():
 
 {test_text}
 """
+    return test_string, inputs, results
 
 if __name__ == "__main__":
     import datasets
@@ -164,13 +180,20 @@ if __name__ == "__main__":
 
         code = re.findall(r"```python\n(.*?)\n```", output, flags=re.MULTILINE|re.DOTALL)[0]
 
-        request_code = convert_example(code, x["entry_point"], x["test"])
+        request_code, inputs, results = convert_example(code, x["entry_point"], x["test"])
         response = requests.post(url, json={"codes": [request_code]})
         reports = response.json()
 
         for report in reports:
             if "failed" in report["summary"]:
-                report_output = report["tests"][0]["call"]["longrepr"]
-                import pdb; pdb.set_trace()
-                out = re.findall(r"out = .*", report_output)[0]
-                exp = re.findall(r"exp = .*", report_output)[0]
+                for i, test in enumerate(report["tests"]):
+                    if test["outcome"] == "failed":
+                        input = inputs[i] # in list form
+                        result = results[i] # expected
+                        exec(code + f"\nprint({x['entry_point']}(*{input}))")
+                        output = eval(x["entry_point"] + f"(*{input})")
+
+                        tokens, logprobs = get_logprobs(REPAIR_PROMPT.format(code=code, input=input, output=output, expected_output=result))
+                        logprob2 = sum(logprobs[-solution_len:], full_solution)
+                        import pdb; pdb.set_trace()
+
