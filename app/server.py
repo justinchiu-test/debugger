@@ -57,7 +57,7 @@ async def main():
 
     futures = []
     for example in dataset:
-        code = convert_example(
+        code, _, _ = convert_example(
             example["prompt"] + example["canonical_solution"],
             example["entry_point"],
             example["test"],

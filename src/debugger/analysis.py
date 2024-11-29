@@ -3,6 +3,7 @@ import time
 import re
 import json
 import ast
+import math
 
 
 client = together.Together()
@@ -202,5 +203,6 @@ if __name__ == "__main__":
                         lines = repair_prompt.splitlines()
                         ts, ls = get_logprobs("\n".join(lines[:-6] + [lines[-1]]), full_solution)
                         logprob3 = sum(ls[-solution_len:])
-                        import pdb; pdb.set_trace()
+                        if i < 2:
+                            import pdb; pdb.set_trace()
 
