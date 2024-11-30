@@ -265,6 +265,23 @@ if __name__ == "__main__":
             # get claude completions
             repair_claude = get_acompletion(repair_prompt)
             repair_after_print_claude = get_acompletion(repair_after_print_prompt)
-            import pdb
 
-            pdb.set_trace()
+            repair_code = re.findall(
+                r"```python\n(.*?)\n```", repair_claude, flags=re.MULTILINE | re.DOTALL
+            )[0]
+            repair_code2 = re.findall(
+                r"```python\n(.*?)\n```", repair_after_print_claude, flags=re.MULTILINE | re.DOTALL
+            )[0]
+
+            repair_req, inputs, results = convert_example(
+                repair_code, x["entry_point"], x["test"]
+            )
+            repair_response = requests.post(url, json={"codes": [repair_req]})
+            repair_reports = repair_response.json()
+            repair_req2, inputs, results = convert_example(
+                repair_code2, x["entry_point"], x["test"]
+            )
+            repair_response2 = requests.post(url, json={"codes": [repair_req2]})
+            repair_reports2 = repair_response2.json()
+
+            import pdb; pdb.set_trace()
