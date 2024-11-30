@@ -42,11 +42,12 @@ def test{i}(candidate):
     assertion(candidate(*{input}), {result}, 0)
 """
 
+
 def get_completion(prompt: str) -> list[str]:
     """Get completion from Llama with retry logic"""
     response = client.chat.completions.create(
         model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-        #model="Qwen/Qwen2.5-Coder-32B-Instruct",
+        # model="Qwen/Qwen2.5-Coder-32B-Instruct",
         messages=[
             {
                 "role": "user",
@@ -58,11 +59,11 @@ def get_completion(prompt: str) -> list[str]:
         top_p=0.7,
         top_k=50,
         repetition_penalty=1,
-        stop=["<|eot_id|>","<|eom_id|>"],
+        stop=["<|eot_id|>", "<|eom_id|>"],
     )
     # assume only a single completion choice
     texts = [c.message.content for c in response.choices]
-    #print(texts[0])
+    # print(texts[0])
     return texts[0]
 
 
@@ -93,7 +94,7 @@ def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
         temperature=0,
         logprobs=True,  # Enable log probabilities
         top_k=1,
-        echo=True  # Return the prompt with the response
+        echo=True,  # Return the prompt with the response
     )
 
     # Extract logprobs from response
@@ -113,10 +114,12 @@ def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
 def convert_example(output, entry_point, test):
     inputs = ast.literal_eval(re.findall(r"inputs = (.*)", test)[0])
     results = ast.literal_eval(re.findall(r"results = (.*)", test)[0])
-    test_text = "\n".join([
-        TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
-        for i, (input, result) in enumerate(zip(inputs, results))
-    ])
+    test_text = "\n".join(
+        [
+            TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
+            for i, (input, result) in enumerate(zip(inputs, results))
+        ]
+    )
     test_string = f"""{output}
 import pytest
 @pytest.fixture
@@ -129,6 +132,7 @@ def candidate():
 """
     return test_string, inputs, results
 
+
 if __name__ == "__main__":
     import datasets
     import requests
@@ -140,7 +144,7 @@ if __name__ == "__main__":
     url = "https://justinchiu--runtest-dev.modal.run"
 
     for x in data:
-        prompt = CODEGEN_PROMPT.format(problem = x["prompt"])
+        prompt = CODEGEN_PROMPT.format(problem=x["prompt"])
         output = get_completion(prompt)
 
         x_prompt = x["prompt"].strip("\n")
@@ -153,19 +157,24 @@ if __name__ == "__main__":
         tokens, logprobs = get_logprobs(prompt, full_solution)
         solution_len = len(tokenizer.tokenize(full_solution))
         # for debugging
-        #completion_tokens = tokens[-solution_len:]
+        # completion_tokens = tokens[-solution_len:]
         logprob1 = sum(logprobs[-solution_len:])
 
-        code = re.findall(r"```python\n(.*?)\n```", output, flags=re.MULTILINE|re.DOTALL)[0]
+        code = re.findall(
+            r"```python\n(.*?)\n```", output, flags=re.MULTILINE | re.DOTALL
+        )[0]
 
-        request_code, inputs, results = convert_example(code, x["entry_point"], x["test"])
+        request_code, inputs, results = convert_example(
+            code, x["entry_point"], x["test"]
+        )
         response = requests.post(url, json={"codes": [request_code]})
         reports = response.json()
 
-        print("reports:",len(reports))
+        print("reports:", len(reports))
         # should only be one report (test suite) with many tests
         report = reports[0]
 
+        # gather failed test idxs
         test_idxs = []
         # only care about programs with >= 1 failed test cases
         if "failed" in report["summary"]:
@@ -180,12 +189,14 @@ if __name__ == "__main__":
 
             # re-execute the code b/c it's annoying to parse in pytest
             print("outcome:", test["outcome"])
-            input = inputs[i] # in list form
-            result = results[i] # expected
+            input = inputs[i]  # in list form
+            result = results[i]  # expected
             exec(code + f"\nprint({x['entry_point']}(*{input}))")
             exec_output = eval(x["entry_point"] + f"(*{input})")
 
-            repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
+            repair_prompt = REPAIR_PROMPT.format(
+                code=code, input=input, output=exec_output, expected_output=result
+            )
 
             tokens, logprobs = get_logprobs(repair_prompt, full_solution)
             logprob2 = sum(logprobs[-solution_len:])
@@ -194,7 +205,13 @@ if __name__ == "__main__":
             ts, ls = get_logprobs("\n".join(lines[:-6] + [lines[-1]]), full_solution)
             logprob3 = sum(ls[-solution_len:])
 
-            print_prompt = PRINT_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
+            print_prompt = PRINT_PROMPT.format(
+                code=code, input=input, output=exec_output, expected_output=result
+            )
             print_output = get_completion(print_prompt)
-            import pdb; pdb.set_trace()
+            print_code = re.findall(
+                r"```python\n(.*?)\n```", print_output, flags=re.MULTILINE | re.DOTALL
+            )[0]
+            import pdb
 
+            pdb.set_trace()

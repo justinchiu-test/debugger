@@ -1,4 +1,3 @@
-
 import modal
 
 app = modal.App("humaneval-server")
@@ -7,9 +6,7 @@ image = (
     modal.Image.from_registry("ubuntu:22.04", add_python="3.9")
     .env({"DEBIAN_FRONTEND": "noninteractive", "TZ": "America/New_York"})
     .run_commands("apt update")
-    .apt_install(
-        "clang", "git", "g++", "python3-tk", "zip", "unzip"
-    )
+    .apt_install("clang", "git", "g++", "python3-tk", "zip", "unzip")
     .pip_install("uv")
     .run_commands(
         "uv pip install --system pytest pytest-json-report",
@@ -42,8 +39,8 @@ def run(code):
     with Path("report.json").open("r") as f:
         result = json.loads(f.read())
         return result
-        #outcomes = [test["outcome"] for test in result["tests"]]
-        #return outcomes
+        # outcomes = [test["outcome"] for test in result["tests"]]
+        # return outcomes
 
 
 @app.local_entrypoint()
