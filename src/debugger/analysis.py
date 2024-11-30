@@ -5,36 +5,12 @@ import json
 import ast
 import math
 
+from debugger.prompts import CODEGEN_PROMPT, REPAIR_PROMPT, PRINT_PROMPT
 
 client = together.Together()
 
-# from https://arxiv.org/pdf/2410.02089 C.4
-#CODEGEN_PROMPT = """Write a solution to the following problem and make sure that it passes the tests:
-#{problem}"""
 
-CODEGEN_PROMPT = """Provide a Python solution for the following programming
-question.
-Your code should be enclosed in triple backticks like so: ```python YOUR CODE HERE ```. Use the backticks for your code only.
-
-```python
-{problem}
-```"""
-
-REPAIR_PROMPT = """Provide a Python solution for the following programming
-question.
-Your code should be enclosed in triple backticks like so: ```python YOUR CODE HERE ```. Use the backticks for your code only.
-
-```python
-{code}
-```
-
-Your solution fails the following example:
-    Input: {input}
-    Output: {output}
-    Expected output: {expected_output}
-
-Please correct the code."""
-
+# Template for constructing tests
 TEST_PREFIX = """
 import numpy as np
 
@@ -70,13 +46,14 @@ def get_completion(prompt: str) -> list[str]:
     """Get completion from Llama with retry logic"""
     response = client.chat.completions.create(
         model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+        #model="Qwen/Qwen2.5-Coder-32B-Instruct",
         messages=[
             {
                 "role": "user",
                 "content": prompt,
             },
         ],
-        max_tokens=512,
+        max_tokens=2048,
         temperature=0.7,
         top_p=0.7,
         top_k=50,
@@ -185,24 +162,39 @@ if __name__ == "__main__":
         response = requests.post(url, json={"codes": [request_code]})
         reports = response.json()
 
-        for report in reports:
-            if "failed" in report["summary"]:
-                for i, test in enumerate(report["tests"]):
-                    if test["outcome"] == "failed":
-                        print(test["outcome"])
-                        input = inputs[i] # in list form
-                        result = results[i] # expected
-                        exec(code + f"\nprint({x['entry_point']}(*{input}))")
-                        exec_output = eval(x["entry_point"] + f"(*{input})")
+        print("reports:",len(reports))
+        # should only be one report (test suite) with many tests
+        report = reports[0]
 
-                        repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
+        test_idxs = []
+        # only care about programs with >= 1 failed test cases
+        if "failed" in report["summary"]:
+            print("tests:", len(report["tests"]))
+            for i, test in enumerate(report["tests"]):
+                # find failed test case
+                if test["outcome"] == "failed":
+                    test_idxs.append(i)
 
-                        tokens, logprobs = get_logprobs(repair_prompt, full_solution)
-                        logprob2 = sum(logprobs[-solution_len:])
+        for idx in test_idxs:
+            test = report["tests"][idx]
 
-                        lines = repair_prompt.splitlines()
-                        ts, ls = get_logprobs("\n".join(lines[:-6] + [lines[-1]]), full_solution)
-                        logprob3 = sum(ls[-solution_len:])
-                        if i < 2:
-                            import pdb; pdb.set_trace()
+            # re-execute the code b/c it's annoying to parse in pytest
+            print("outcome:", test["outcome"])
+            input = inputs[i] # in list form
+            result = results[i] # expected
+            exec(code + f"\nprint({x['entry_point']}(*{input}))")
+            exec_output = eval(x["entry_point"] + f"(*{input})")
+
+            repair_prompt = REPAIR_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
+
+            tokens, logprobs = get_logprobs(repair_prompt, full_solution)
+            logprob2 = sum(logprobs[-solution_len:])
+
+            lines = repair_prompt.splitlines()
+            ts, ls = get_logprobs("\n".join(lines[:-6] + [lines[-1]]), full_solution)
+            logprob3 = sum(ls[-solution_len:])
+
+            print_prompt = PRINT_PROMPT.format(code=code, input=input, output=exec_output, expected_output=result)
+            print_output = get_completion(print_prompt)
+            import pdb; pdb.set_trace()
 
