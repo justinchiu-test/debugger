@@ -6,7 +6,8 @@ import json
 import ast
 import math
 
-from debugger.prompts import CODEGEN_PROMPT, REPAIR_PROMPT, PRINT_PROMPT
+from debugger.prompts import CODEGEN_PROMPT, REPAIR_PROMPT, PRINT_PROMPT, REPAIR_AFTER_PRINT_PROMPT
+from debugger.exec import run_python_code
 
 client = together.Together()
 aclient = anthropic.Anthropic()
@@ -45,7 +46,7 @@ def test{i}(candidate):
 
 
 def get_completion(prompt: str) -> list[str]:
-    """Get completion from Llama with retry logic"""
+    """Get greedy completion from Llama"""
     response = client.chat.completions.create(
         model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
         # model="Qwen/Qwen2.5-Coder-32B-Instruct",
@@ -56,7 +57,7 @@ def get_completion(prompt: str) -> list[str]:
             },
         ],
         max_tokens=2048,
-        temperature=0.7,
+        temperature=0.,
         top_p=0.7,
         top_k=50,
         repetition_penalty=1,
@@ -69,11 +70,11 @@ def get_completion(prompt: str) -> list[str]:
 
 
 def get_acompletion(prompt: str) -> list[str]:
-    """Get completion from claude"""
-    message = client.messages.create(
+    """Get greedy completion from claude"""
+    message = aclient.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=8192,
-        temperature=0.7,
+        temperature=0.,
         messages=[
             {
                 "role": "user",
@@ -82,11 +83,12 @@ def get_acompletion(prompt: str) -> list[str]:
                         "type": "text",
                         "text": prompt,
                     }
-                ]
+                ],
             }
-        ]
+        ],
     )
-    return message.content
+    return message.content[0].text
+
 
 def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
     """
@@ -134,13 +136,22 @@ def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
 
 def convert_example(output, entry_point, test):
     inputs = ast.literal_eval(re.findall(r"inputs = (.*)", test)[0])
-    results = ast.literal_eval(re.findall(r"results = (.*)", test)[0])
-    test_text = "\n".join(
-        [
-            TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
-            for i, (input, result) in enumerate(zip(inputs, results))
-        ]
-    )
+    if "results" in test:
+        results = ast.literal_eval(re.findall(r"results = (.*)", test)[0])
+        test_text = "\n".join(
+            [
+                TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
+                for i, (input, result) in enumerate(zip(inputs, results))
+            ]
+        )
+    else:
+        results = [f"ref_func({repr(*input)})" for input in inputs]
+        test_text = "\n".join(
+            [
+                TEST_SINGLE.format(i=i, input=repr(input), result=repr(result))
+                for i, (input, result) in enumerate(zip(inputs, results))
+            ]
+        )
     test_string = f"""{output}
 import pytest
 @pytest.fixture
@@ -212,8 +223,7 @@ if __name__ == "__main__":
             print("outcome:", test["outcome"])
             input = inputs[i]  # in list form
             result = results[i]  # expected
-            exec(code + f"\nprint({x['entry_point']}(*{input}))")
-            exec_output = eval(x["entry_point"] + f"(*{input})")
+            exec_output, exec_err = run_python_code(code + f"\nprint({x['entry_point']}(*{input}))")
 
             repair_prompt = REPAIR_PROMPT.format(
                 code=code, input=input, output=exec_output, expected_output=result
@@ -229,18 +239,32 @@ if __name__ == "__main__":
             print_prompt = PRINT_PROMPT.format(
                 code=code, input=input, output=exec_output, expected_output=result
             )
-            print_output = get_completion(print_prompt)
+            print_output = get_acompletion(print_prompt)
             print_code = re.findall(
                 r"```python\n(.*?)\n```", print_output, flags=re.MULTILINE | re.DOTALL
             )[0]
 
-            # format print_code
-            import pdb; pdb.set_trace()
+            print_out, print_err = run_python_code(print_code + f"\nprint({x['entry_point']}(*{input}))")
+
+            # format print_code by splicing prints with printed
+            print_code_lines = print_code.splitlines()
+            print_out_lines = print_out.splitlines()
+            lines = []
+            print_idx = 0
+            for line in print_code_lines:
+                if "print" in line:
+                    lines.append(line + "# " + print_out_lines[print_idx])
+                    print_idx += 1
+                else:
+                    lines.append(line)
+            printed_code = "\n".join(lines)
 
             repair_after_print_prompt = REPAIR_AFTER_PRINT_PROMPT.format(
-                code=print_code, input=input, output=exec_output, expected_output=result
+                code=printed_code, input=input, output=exec_output, expected_output=result
             )
             # get claude completions
             repair_claude = get_acompletion(repair_prompt)
             repair_after_print_claude = get_acompletion(repair_after_print_prompt)
-            import pdb; pdb.set_trace()
+            import pdb
+
+            pdb.set_trace()
