@@ -1,4 +1,5 @@
 import together
+import anthropic
 import time
 import re
 import json
@@ -8,7 +9,7 @@ import math
 from debugger.prompts import CODEGEN_PROMPT, REPAIR_PROMPT, PRINT_PROMPT
 
 client = together.Together()
-
+aclient = anthropic.Anthropic()
 
 # Template for constructing tests
 TEST_PREFIX = """
@@ -66,6 +67,26 @@ def get_completion(prompt: str) -> list[str]:
     # print(texts[0])
     return texts[0]
 
+
+def get_acompletion(prompt: str) -> list[str]:
+    """Get completion from claude"""
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=8192,
+        temperature=0.7,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt,
+                    }
+                ]
+            }
+        ]
+    )
+    return message.content
 
 def get_logprobs(prompt: str, completion: str) -> tuple[list[str], list[float]]:
     """
@@ -212,6 +233,14 @@ if __name__ == "__main__":
             print_code = re.findall(
                 r"```python\n(.*?)\n```", print_output, flags=re.MULTILINE | re.DOTALL
             )[0]
-            import pdb
 
-            pdb.set_trace()
+            # format print_code
+            import pdb; pdb.set_trace()
+
+            repair_after_print_prompt = REPAIR_AFTER_PRINT_PROMPT.format(
+                code=print_code, input=input, output=exec_output, expected_output=result
+            )
+            # get claude completions
+            repair_claude = get_acompletion(repair_prompt)
+            repair_after_print_claude = get_acompletion(repair_after_print_prompt)
+            import pdb; pdb.set_trace()
