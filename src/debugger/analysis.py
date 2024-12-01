@@ -262,9 +262,13 @@ if __name__ == "__main__":
             repair_after_print_prompt = REPAIR_AFTER_PRINT_PROMPT.format(
                 code=printed_code, input=input, output=exec_output, expected_output=result
             )
-            # get claude completions
-            repair_claude = get_acompletion(repair_prompt)
-            repair_after_print_claude = get_acompletion(repair_after_print_prompt)
+
+            # claude repairs
+            #repair_claude = get_acompletion(repair_prompt)
+            #repair_after_print_claude = get_acompletion(repair_after_print_prompt)
+            # get llama repairs
+            repair_claude = get_completion(repair_prompt)
+            repair_after_print_claude = get_completion(repair_after_print_prompt)
 
             repair_code = re.findall(
                 r"```python\n(.*?)\n```", repair_claude, flags=re.MULTILINE | re.DOTALL
